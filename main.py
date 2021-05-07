@@ -18,13 +18,13 @@ class LSTM1(nn.Module):
 
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
                             num_layers=num_layers, batch_first=True)  # lstm
-        self.fc_1 = nn.Linear(hidden_size, 32)  # fully connected 1
-        self.fc = nn.Linear(32, num_classes)  # fully connected last layer
+        self.fc_1 = nn.Linear(hidden_size, 16)  # fully connected 1
+        self.fc_2 = nn.Linear(16, 16)  # fully connected 1
+        self.fc = nn.Linear(16, num_classes)  # fully connected last layer
 
         self.relu = nn.ReLU()
 
     def forward(self, x):
-
         h_0 = Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size))  # hidden state
         c_0 = Variable(torch.zeros(self.num_layers, x.size(0), self.hidden_size))  # internal state
 
@@ -34,13 +34,15 @@ class LSTM1(nn.Module):
         out = self.relu(hn)
         out = self.fc_1(out)  # first Dense
         out = self.relu(out)  # relu
+        out = self.fc_2(out)  # first Dense
+        out = self.relu(out)  # relu
         out = self.fc(out)  # Final Output
 
         return out
 
 
 class LSTM2(nn.Module):
-    def __init__(self, num_classes, input_size, hidden_size_1, hidden_size_2, nb_layers_1=1, nb_layers_2=1):
+    def __init__(self, num_classes, input_size, hidden_size_1, hidden_size_2, nb_layers_1=2, nb_layers_2=0, dropout=0.5):
         super(LSTM2, self).__init__()
         self.num_classes = num_classes  # number of classes
         self.num_layers = num_layers  # number of layers
@@ -51,33 +53,36 @@ class LSTM2(nn.Module):
         self.hidden_size_2 = hidden_size_2
         self.nb_layers_1 = nb_layers_1
         self.nb_layers_2 = nb_layers_2
-        self.lstm_1 = nn.LSTM(self.input_size, self.hidden_size_1, self.nb_layers_1)
-        self.lstm_2 = nn.LSTM(self.hidden_size_1, self.hidden_size_2, self.nb_layers_2)
+        self.lstm_1 = nn.LSTM(self.input_size, self.hidden_size_1, self.nb_layers_1, dropout=dropout)
+        # self.lstm_2 = nn.LSTM(self.hidden_size_1, self.hidden_size_2, self.nb_layers_2, dropout=dropout)
 
         # self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
         #                     num_layers=num_layers, batch_first=True)  # lstm
-        self.fc_1 = nn.Linear(hidden_size_2, 64)  # fully connected 1
-        self.fc = nn.Linear(64, num_classes)  # fully connected last layer
+        self.fc_1 = nn.Linear(hidden_size_1, 8)  # fully connected 1
+        self.fc_2 = nn.Linear(8, 8)  # fully connected 1
+        self.fc = nn.Linear(8, num_classes)  # fully connected last layer
 
         self.relu = nn.ReLU()
 
     def forward(self, x):
-
         h_t1 = Variable(torch.zeros(self.nb_layers_1, x.size()[1], self.hidden_size_1))
         c_t1 = Variable(torch.zeros(self.nb_layers_1, x.size()[1], self.hidden_size_1))
         h_t2 = Variable(torch.zeros(self.nb_layers_2, x.size()[1], self.hidden_size_2))
         c_t2 = Variable(torch.zeros(self.nb_layers_2, x.size()[1], self.hidden_size_2))
         out = []
 
-        for i, input_t in enumerate(x.chunk(x.size(1))):
-            h_t1, c_t1 = self.lstm_1(input_t, (h_t1, c_t1))
-            h_t2, _ = self.lstm_2(h_t1, (h_t2, c_t2))
-            hn = h_t2.view(-1, self.hidden_size_2)  # reshaping the data for Dense layer next
-            out = self.relu(hn)
-            out = self.fc_1(out)  # first Dense
-            out = self.relu(out)  # relu
-            out = self.fc(out)  # Final Output
-            out += out
+        # for i, input_t in enumerate(x.chunk(x.size(1))):
+        h_t1, c_t1 = self.lstm_1(x, (h_t1, c_t1))
+        # h_t2, _ = self.lstm_2(h_t1, (h_t2, c_t2))
+        # hn = h_t2.view(-1, self.hidden_size_2)  # reshaping the data for Dense layer next
+        hn = h_t1.view(-1, self.hidden_size_1)
+        out = self.relu(hn)
+        out = self.fc_1(out)  # first Dense
+        out = self.relu(out)  # relu
+        out = self.fc_2(out)  # first Dense
+        out = self.relu(out)  # relu
+        out = self.fc(out)  # Final Output
+        # out += out
 
         # output = torch.stack(output, 1).squeeze(2)
         return out
@@ -91,13 +96,18 @@ def add_remaining_useful_life(df):
     # Merge the max cycle back into the original frame
     result_frame = df.merge(max_cycle.to_frame(name='max_cycle'), left_on='unit_nr', right_index=True)
 
-    # Calculate remaining useful life for each row
+    # Calculate remaining useful life for each row (piece-wise Linear)
     # remaining_useful_life = result_frame["max_cycle"] - result_frame["time_cycles"]
+
+    # Calculate remaining useful life for each row (scaled Weibull)
     min_engine = np.exp(-pow((result_frame["max_cycle"] / 225.02895), 4.40869))
     result_frame["min"] = min_engine
-    remaining_useful_life = round(130 * (
-            (np.exp(-pow((result_frame["time_cycles"] / 225.02895), 4.40869)) - result_frame["min"]) / (
-            1 - result_frame["min"])))
+    # remaining_useful_life = round(140 * (
+    #         (np.exp(-pow((result_frame["time_cycles"] / 225.02895), 4.40869)) - result_frame["min"]) / (
+    #             1 - result_frame["min"])))
+    remaining_useful_life = (np.exp(-pow((result_frame["time_cycles"] / 225.02895), 4.40869)) - result_frame["min"]) / (
+                1 - result_frame["min"])
+
     result_frame["RUL"] = remaining_useful_life
 
     # drop max_cycle as it's no longer needed
@@ -129,10 +139,6 @@ train.drop(labels=drop_labels, axis=1, inplace=True)
 # inspect first few rows
 train.head()
 
-train = add_remaining_useful_life(train)
-train['RUL'].clip(upper=130, inplace=True)
-
-
 title = train.iloc[:, 0:2]
 data = train.iloc[:, 2:]
 
@@ -140,10 +146,12 @@ data_norm = (data - data.min()) / (data.max() - data.min())
 
 train_norm = pd.concat([title, data_norm], axis=1)
 
+train_norm = add_remaining_useful_life(train_norm)
+# train['RUL'].clip(upper=140, inplace=True)
+
 group = train_norm.groupby(by="unit_nr")
 
-
-num_epochs = 150  # 1000 epochs
+num_epochs = 250  # 1000 epochs
 learning_rate = 0.00001  # 0.001 lr
 
 num_classes = 1  # number of output classes
@@ -155,7 +163,7 @@ seq_length = 1
 
 lstm1 = LSTM1(num_classes, input_size, hidden_size, num_layers, seq_length)  # our lstm class
 
-# hidden_size_1 = 64  # number of features in hidden state
+# hidden_size_1 = 32  # number of features in hidden state
 # hidden_size_2 = 64  # number of features in hidden state
 #
 # lstm1 = LSTM2(num_classes, input_size, hidden_size_1, hidden_size_2)  # our lstm class
@@ -219,7 +227,7 @@ while j <= 100:
     X_test_tensors_final = torch.reshape(X_test_tensors, (X_test_tensors.shape[0], 1, X_test_tensors.shape[1]))
 
     test_predict = lstm1(X_test_tensors_final)  # forward pass
-    data_predict = test_predict.data.numpy()[-1] * 130  # numpy conversion
+    data_predict = test_predict.data.numpy()[-1] * 140  # numpy conversion
 
     result.append(data_predict)
 
@@ -239,6 +247,6 @@ plt.title('Remaining Useful Life Prediction')
 plt.legend()
 plt.xlabel("Samples")
 plt.ylabel("Remaining Useful Life")
-plt.savefig('L{}N{}({})E{}S{}.png'.format(hidden_size, "32", rmse, num_epochs, seq_length))
-# plt.savefig('L({},{})N{}({})E{}S{}.png'.format(hidden_size_1, hidden_size_2, "16", rmse, num_epochs, seq_length))
+plt.savefig('L{}N{}({})E{}S{}C{}.png'.format(hidden_size, "16,16", rmse, num_epochs, seq_length, "140"))
+# plt.savefig('L({},{})N{}({})E{}S{}.png'.format(hidden_size_1, hidden_size_2, "8,8", rmse, num_epochs, seq_length))
 plt.show()
