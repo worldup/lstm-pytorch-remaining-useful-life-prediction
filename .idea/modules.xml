@@ -4,6 +4,7 @@
     <modules>
       <module fileurl="file://$PROJECT_DIR$/../Deep-CNN-for-Estimation-of-Remaining-Useful-Life/.idea/Deep-CNN-for-Estimation-of-Remaining-Useful-Life.iml" filepath="$PROJECT_DIR$/../Deep-CNN-for-Estimation-of-Remaining-Useful-Life/.idea/Deep-CNN-for-Estimation-of-Remaining-Useful-Life.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/LSTM-for-RUL-Prediction.iml" filepath="$PROJECT_DIR$/.idea/LSTM-for-RUL-Prediction.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../pytorch-weibencoder/.idea/pytorch-weibencoder.iml" filepath="$PROJECT_DIR$/../pytorch-weibencoder/.idea/pytorch-weibencoder.iml" />
     </modules>
   </component>
 </project>

@@ -19,8 +19,8 @@ class LSTM1(nn.Module):
         self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
                             num_layers=num_layers, batch_first=True)  # lstm
         self.fc_1 = nn.Linear(hidden_size, 16)  # fully connected 1
-        self.fc_2 = nn.Linear(16, 16)  # fully connected 1
-        self.fc = nn.Linear(16, num_classes)  # fully connected last layer
+        self.fc_2 = nn.Linear(16, 8)  # fully connected 1
+        self.fc = nn.Linear(8, num_classes)  # fully connected last layer
 
         self.relu = nn.ReLU()
 
@@ -38,11 +38,20 @@ class LSTM1(nn.Module):
         out = self.relu(out)  # relu
         out = self.fc(out)  # Final Output
 
+        # i = 1
+        # weib = list()
+        # while i < x.size(0) + 1:
+        #     weib.append(round(np.exp(-pow((i / 225.02895), 4.40869)) * 140))
+        #     i += 1
+        #
+        # out = torch.mul(out, torch.Tensor(weib).reshape(x.size(0), 1))
+
         return out
 
 
 class LSTM2(nn.Module):
-    def __init__(self, num_classes, input_size, hidden_size_1, hidden_size_2, nb_layers_1=2, nb_layers_2=0, dropout=0.5):
+    def __init__(self, num_classes, input_size, hidden_size_1, hidden_size_2, nb_layers_1=1, nb_layers_2=1,
+                 dropout=0.5):
         super(LSTM2, self).__init__()
         self.num_classes = num_classes  # number of classes
         self.num_layers = num_layers  # number of layers
@@ -54,11 +63,11 @@ class LSTM2(nn.Module):
         self.nb_layers_1 = nb_layers_1
         self.nb_layers_2 = nb_layers_2
         self.lstm_1 = nn.LSTM(self.input_size, self.hidden_size_1, self.nb_layers_1, dropout=dropout)
-        # self.lstm_2 = nn.LSTM(self.hidden_size_1, self.hidden_size_2, self.nb_layers_2, dropout=dropout)
+        self.lstm_2 = nn.LSTM(self.hidden_size_1, self.hidden_size_2, self.nb_layers_2, dropout=dropout)
 
         # self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
         #                     num_layers=num_layers, batch_first=True)  # lstm
-        self.fc_1 = nn.Linear(hidden_size_1, 8)  # fully connected 1
+        self.fc_1 = nn.Linear(hidden_size_2, 8)  # fully connected 1
         self.fc_2 = nn.Linear(8, 8)  # fully connected 1
         self.fc = nn.Linear(8, num_classes)  # fully connected last layer
 
@@ -69,13 +78,15 @@ class LSTM2(nn.Module):
         c_t1 = Variable(torch.zeros(self.nb_layers_1, x.size()[1], self.hidden_size_1))
         h_t2 = Variable(torch.zeros(self.nb_layers_2, x.size()[1], self.hidden_size_2))
         c_t2 = Variable(torch.zeros(self.nb_layers_2, x.size()[1], self.hidden_size_2))
-        out = []
+        # out = []
 
         # for i, input_t in enumerate(x.chunk(x.size(1))):
         h_t1, c_t1 = self.lstm_1(x, (h_t1, c_t1))
-        # h_t2, _ = self.lstm_2(h_t1, (h_t2, c_t2))
-        # hn = h_t2.view(-1, self.hidden_size_2)  # reshaping the data for Dense layer next
-        hn = h_t1.view(-1, self.hidden_size_1)
+        h_t2, _ = self.lstm_2(h_t1, (h_t2, c_t2))
+        # print(h_t2.size())
+        hn = h_t2.view(-1, self.hidden_size_2)  # reshaping the data for Dense layer next
+        # print(hn.size())
+        # hn = h_t1.view(-1, self.hidden_size_1)
         out = self.relu(hn)
         out = self.fc_1(out)  # first Dense
         out = self.relu(out)  # relu
@@ -102,11 +113,10 @@ def add_remaining_useful_life(df):
     # Calculate remaining useful life for each row (scaled Weibull)
     min_engine = np.exp(-pow((result_frame["max_cycle"] / 225.02895), 4.40869))
     result_frame["min"] = min_engine
-    # remaining_useful_life = round(140 * (
-    #         (np.exp(-pow((result_frame["time_cycles"] / 225.02895), 4.40869)) - result_frame["min"]) / (
-    #             1 - result_frame["min"])))
-    remaining_useful_life = (np.exp(-pow((result_frame["time_cycles"] / 225.02895), 4.40869)) - result_frame["min"]) / (
-                1 - result_frame["min"])
+
+    remaining_useful_life = round(
+        (np.exp(-pow((result_frame["time_cycles"] / 225.02895), 4.40869)) - result_frame["min"]) / (
+                    1 - result_frame["min"]) * 140)
 
     result_frame["RUL"] = remaining_useful_life
 
@@ -132,7 +142,7 @@ test = pd.read_csv((dir_path + 'test_FD001.txt'), sep='\s+', header=None, names=
 y_test = pd.read_csv((dir_path + 'RUL_FD001.txt'), sep='\s+', header=None, names=['RUL'])
 
 # drop non-informative features, derived from EDA
-drop_sensors = ['s_1', 's_5', 's_10', 's_16', 's_18', 's_19']
+drop_sensors = ['s_1', 's_5', 's_6', 's_10', 's_16', 's_18', 's_19']
 drop_labels = setting_names + drop_sensors
 train.drop(labels=drop_labels, axis=1, inplace=True)
 
@@ -151,11 +161,22 @@ train_norm = add_remaining_useful_life(train_norm)
 
 group = train_norm.groupby(by="unit_nr")
 
-num_epochs = 250  # 1000 epochs
-learning_rate = 0.00001  # 0.001 lr
+test.drop(labels=drop_labels, axis=1, inplace=True)
+
+title = test.iloc[:, 0:2]
+data = test.iloc[:, 2:]
+
+data_norm = (data - data.min()) / (data.max() - data.min())
+
+test_norm = pd.concat([title, data_norm], axis=1)
+
+group_test = test_norm.groupby(by="unit_nr")
+
+num_epochs = 120  # 1000 epochs
+learning_rate = 0.0001  # 0.001 lr
 
 num_classes = 1  # number of output classes
-input_size = 15  # number of features
+input_size = 14  # number of features
 
 hidden_size = 128  # number of features in hidden state
 num_layers = 1  # number of stacked lstm layers
@@ -170,9 +191,13 @@ lstm1 = LSTM1(num_classes, input_size, hidden_size, num_layers, seq_length)  # o
 
 criterion = torch.nn.MSELoss()  # mean-squared error for regression
 optimizer = torch.optim.Adam(lstm1.parameters(), lr=learning_rate)
+# scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10], gamma=0.1)
 
 for epoch in range(num_epochs):
+
+    lstm1.train()
     i = 1
+
     while i <= 100:
         x = group.get_group(i)
         X = x.iloc[:, 2:-1]
@@ -197,52 +222,57 @@ for epoch in range(num_epochs):
 
         i += 1
 
-    if epoch % 2 == 0:
-        print("Epoch: %d, loss: %1.5f" % (epoch, loss.item()))
+    rmse = 0
 
-test.drop(labels=drop_labels, axis=1, inplace=True)
+    j = 1
 
-title = test.iloc[:, 0:2]
-data = test.iloc[:, 2:]
+    result = list()
 
-data_norm = (data - data.min()) / (data.max() - data.min())
+    # evaluate model
+    lstm1.eval()
 
-test_norm = pd.concat([title, data_norm], axis=1)
+    while j <= 100:
+        x1_test = group_test.get_group(j)
+        X_test = x1_test.iloc[:, 2:]
 
-group = test_norm.groupby(by="unit_nr")
+        X_test_tensors = Variable(torch.Tensor(X_test.to_numpy()))
 
-rmse = 0
+        # reshaping to rows, timestamps, features
+        X_test_tensors_final = torch.reshape(X_test_tensors, (X_test_tensors.shape[0], 1, X_test_tensors.shape[1]))
 
-j = 1
+        test_predict = lstm1.forward(X_test_tensors_final)  # forward pass
+        data_predict = int(test_predict.data.numpy()[-1])  # numpy conversion
 
-result = []
+        if data_predict < 0:
+            data_predict = 0
 
-while j <= 100:
-    x1 = group.get_group(j)
-    X = x1.iloc[:, 2:]
+        result.append(data_predict)
 
-    X_test_tensors = Variable(torch.Tensor(X.to_numpy()))
+        rmse += np.power((data_predict - y_test.to_numpy()[j - 1]), 2)
 
-    # reshaping to rows, timestamps, features
-    X_test_tensors_final = torch.reshape(X_test_tensors, (X_test_tensors.shape[0], 1, X_test_tensors.shape[1]))
+        j += 1
 
-    test_predict = lstm1(X_test_tensors_final)  # forward pass
-    data_predict = test_predict.data.numpy()[-1] * 140  # numpy conversion
+    rmse = np.sqrt(rmse / 100)
+    # print(rmse)
 
-    result.append(data_predict)
+    # scheduler.step()
 
-    rmse += np.power((data_predict - y_test.to_numpy()[j - 1]), 2)
+    if epoch % 1 == 0:
+        print("Epoch: %d, loss: %1.5f, rmse: %1.5f" % (epoch, loss.item(), rmse))
 
-    j += 1
+result = y_test.join(pd.DataFrame(result))
+result = result.sort_values('RUL', ascending=False)
 
-rmse = np.sqrt(rmse / 100)
-print(rmse)
+# the true remaining useful life of the testing samples
+true_rul = result.iloc[:, 0:1].to_numpy()
+# the predicted remaining useful life of the testing samples
+pred_rul = result.iloc[:, 1:].to_numpy()
 
-plt.figure(figsize=(15, 6))  # plotting
+plt.figure(figsize=(10, 6))  # plotting
 plt.axvline(x=100, c='r', linestyle='--')  # size of the training set
 
-plt.plot(y_test, label='Actual Data')  # actual plot
-plt.plot(result, label='Predicted Data')  # predicted plot
+plt.plot(true_rul, label='Actual Data')  # actual plot
+plt.plot(pred_rul, label='Predicted Data')  # predicted plot
 plt.title('Remaining Useful Life Prediction')
 plt.legend()
 plt.xlabel("Samples")
